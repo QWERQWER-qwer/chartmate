@@ -57,6 +57,7 @@
       <span class="chip" onclick="quick('애플 지금 어때?')">애플</span>
       <span class="chip" onclick="quick('테슬라 지금 어때?')">테슬라</span>
       <span class="chip" onclick="quick('비트코인 지금 어때?')">비트코인</span>
+      <label class="chip" style="cursor:pointer">📷 차트 업로드 (또는 Ctrl+V)<input type="file" id="chartfile" accept="image/*" style="display:none" onchange="uploadChart(this.files[0])" /></label>
     </div>
 
     <div id="feed"></div>
@@ -97,25 +98,28 @@
     function removeLoading(){ const l=document.getElementById("loading"); if(l) l.remove(); }
 
     // 브리핑 텍스트를 보기 좋게 렌더
+    function mdInline(s){
+      return escapeHtml(s).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+    }
     function addAssistant(text){
       const el = document.createElement("div");
       el.className = "a";
-      const lines = (text || "").split("\n").filter(l => l.trim() !== "");
-      lines.forEach((ln, i) => {
+      const lines = (text || "").split("\n").map(l => l.trim())
+        .filter(l => l !== "" && l !== "--" && l !== "*" && l !== "-" && l !== "•");
+      lines.forEach((t, i) => {
         const d = document.createElement("div");
-        const t = ln.trim();
-        if (t.startsWith("·") || t.startsWith("-")) {
+        if (t.startsWith("·") || t.startsWith("* ") || t.startsWith("- ")) {
           d.className = "bullet";
-          d.innerHTML = "<span>•</span><span>" + escapeHtml(t.replace(/^[·\-]\s*/, "")) + "</span>";
+          d.innerHTML = "<span>•</span><span>" + mdInline(t.replace(/^[·*\-]\s*/, "")) + "</span>";
         } else if (t.startsWith("※")) {
           d.className = "disc";
-          d.textContent = t;
+          d.innerHTML = mdInline(t);
         } else if (i === 0) {
           d.className = "head";
-          d.textContent = t;
+          d.innerHTML = mdInline(t);
         } else {
           d.className = "line";
-          d.textContent = t;
+          d.innerHTML = mdInline(t);
         }
         el.appendChild(d);
       });
@@ -146,7 +150,7 @@
           history.push({ role:"user", content: msg });
           history.push({ role:"assistant", content: data.answer });
         } else {
-          addAssistant("⚠️ 응답을 받지 못했어요. 잠시 후 다시 시도해 주세요.");
+          addAssistant("⚠️ 응답을 받지 못했어요." + (data.detail ? "\n(" + data.detail + ")" : " 잠시 후 다시 시도해 주세요."));
         }
       }catch(e){
         removeLoading();
@@ -156,6 +160,76 @@
         input.focus();
       }
     }
+
+    function addUserImage(file){
+      const el = document.createElement("div");
+      el.className = "u";
+      el.textContent = "📷 차트 이미지 업로드";
+      feed.appendChild(el);
+      const img = document.createElement("img");
+      img.src = URL.createObjectURL(file);
+      img.style = "max-width:85%;align-self:flex-end;border-radius:12px;margin-top:4px;border:1px solid var(--line)";
+      feed.appendChild(img);
+      scroll();
+    }
+
+
+    // 업로드 전 이미지 축소 (전송량·처리시간 감소)
+    function resizeImage(file, maxDim = 1280, quality = 0.85){
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          let w = img.width, h = img.height;
+          if (Math.max(w, h) > maxDim){
+            const r = maxDim / Math.max(w, h);
+            w = Math.round(w * r); h = Math.round(h * r);
+          }
+          const c = document.createElement("canvas");
+          c.width = w; c.height = h;
+          c.getContext("2d").drawImage(img, 0, 0, w, h);
+          c.toBlob((blob) => resolve(blob || file), "image/jpeg", quality);
+        };
+        img.onerror = () => resolve(file);
+        img.src = URL.createObjectURL(file);
+      });
+    }
+
+    async function uploadChart(file){
+      if(!file) return;
+      addUserImage(file);
+      addLoading();
+      try{
+        const blob = await resizeImage(file);
+        const fd = new FormData();
+        fd.append("image", blob, "chart.jpg");
+        const res = await fetch(`${API_BASE_URL}/api/chart`, { method:"POST", body: fd });
+        const data = await res.json();
+        removeLoading();
+        if(data.analysis){
+          addAssistant(data.analysis);
+          history.push({ role:"user", content:"[차트 이미지 업로드]" });
+          history.push({ role:"assistant", content: data.analysis });
+        } else {
+          addAssistant("⚠️ 차트 분석에 실패했어요." + (data.detail ? " ("+data.detail+")" : ""));
+        }
+      }catch(e){
+        removeLoading();
+        addAssistant("⚠️ 서버에 연결하지 못했어요. 백엔드가 실행 중인지 확인해 주세요.");
+      }finally{
+        const f = document.getElementById("chartfile"); if(f) f.value = "";
+      }
+    }
+
+    // Win+Shift+S로 캡처한 이미지를 Ctrl+V로 바로 분석
+    document.addEventListener("paste", (e) => {
+      const items = (e.clipboardData && e.clipboardData.items) || [];
+      for (const it of items) {
+        if (it.type && it.type.startsWith("image/")) {
+          const file = it.getAsFile();
+          if (file) { e.preventDefault(); uploadChart(file); return; }
+        }
+      }
+    });
   </script>
 </body>
 </html>

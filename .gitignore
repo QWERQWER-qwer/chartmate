@@ -19,3 +19,6 @@ node_modules/
 Thumbs.db
 .vscode/
 .idea/
+
+# 배포용 임시 (커밋 금지)
+firebase_env.txt

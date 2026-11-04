@@ -58,7 +58,7 @@ def _plan_with_model(message: str):
         resp = client.chat.completions.create(
             model=MODEL,
             messages=[{"role": "user", "content": prompt}],
-            max_completion_tokens=60,
+            max_completion_tokens=300,
         )
         text = resp.choices[0].message.content or ""
         s, e = text.find("{"), text.rfind("}")
@@ -115,9 +115,13 @@ def chat(user_message: str, history: list) -> dict:
     response = client.chat.completions.create(
         model=MODEL,
         messages=messages,
-        max_completion_tokens=1200,
+        max_completion_tokens=2000,
     )
-    answer = response.choices[0].message.content
+    choice = response.choices[0]
+    answer = choice.message.content
+    if not answer:
+        print(f"[chat] 빈 응답 (finish_reason={choice.finish_reason})")
+        answer = "죄송해요, 답변을 생성하지 못했어요. 질문을 조금 더 구체적으로 다시 해 주세요."
 
     # 4) 대화 저장
     saved_messages = history + [
