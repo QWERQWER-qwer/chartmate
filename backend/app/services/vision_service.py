@@ -1,19 +1,17 @@
 """차트 이미지 해석 (멀티모달) — Google Gemini
 
-코디세이 OpenAI 엔드포인트가 이미지 입력을 지원하지 않아(요청이 무한 대기),
-차트 해석은 Gemini 비전(gemini-3.5-flash)으로 처리한다.
-모델이 미래를 예측하지 않고 차트를 '관찰'해 설명한다.
+코디세이 OpenAI 엔드포인트가 이미지 입력을 지원하지 않아, 차트 해석은
+Gemini 비전(gemini-3.5-flash)으로 처리한다.
+
+[배포 안정화] google-genai는 무겁다(grpc 등). 서버 시작 시 전부 불러오면
+무료 인스턴스(512MB)에서 startup이 막힐 수 있어, import·클라이언트 생성을
+'첫 차트 요청 때'로 미루는 지연 로딩(lazy)으로 둔다.
 """
 import time
-
-from google import genai
-from google.genai import types
 
 from app.config import GEMINI_API_KEY
 
 MODEL = "gemini-3.5-flash"
-
-_client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 
 VISION_PROMPT = (
     "당신은 투자 초보를 돕는 AI 투자 비서 'ChartMate'입니다.\n"
@@ -27,15 +25,32 @@ VISION_PROMPT = (
     "끝에 항상 '※ 투자 참고용 정보이며 매수·매도 권유가 아닙니다.'를 붙입니다."
 )
 
+_client = None
+
+
+def _get_client():
+    """Gemini 클라이언트를 처음 쓸 때 한 번만 생성 (지연 로딩)."""
+    global _client
+    if _client is None:
+        if not GEMINI_API_KEY:
+            return None
+        from google import genai  # 지연 import
+        _client = genai.Client(api_key=GEMINI_API_KEY)
+    return _client
+
 
 def analyze_chart(image_bytes: bytes, mime_type: str = "image/png", user_note: str = "") -> dict:
-    if _client is None:
-        return {"error": "GEMINI_API_KEY가 설정되지 않았습니다. backend/.env에 키를 추가하세요."}
+    client = _get_client()
+    if client is None:
+        return {"error": "GEMINI_API_KEY가 설정되지 않았습니다. 환경변수를 확인하세요."}
+
+    from google.genai import types  # 지연 import
+
     text = VISION_PROMPT + (f"\n\n사용자 메모: {user_note}" if user_note else "")
     last_err = None
     for attempt in range(3):
         try:
-            resp = _client.models.generate_content(
+            resp = client.models.generate_content(
                 model=MODEL,
                 contents=[
                     text,
@@ -46,7 +61,6 @@ def analyze_chart(image_bytes: bytes, mime_type: str = "image/png", user_note: s
         except Exception as e:
             last_err = e
             msg = str(e)
-            # 일시적 서버 혼잡(503/UNAVAILABLE)만 재시도
             if "503" in msg or "UNAVAILABLE" in msg or "high demand" in msg:
                 time.sleep(2 * (attempt + 1))
                 continue
