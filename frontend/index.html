@@ -12,7 +12,7 @@
     }
     *{box-sizing:border-box;}
     body{margin:0;font-family:"Segoe UI","Malgun Gothic",sans-serif;background:var(--bg);color:var(--text);line-height:1.6;}
-    .notice{background:var(--warn);color:var(--warn-text);font-size:13px;text-align:center;padding:8px 16px;border-bottom:1px solid var(--line);}
+    .notice{position:sticky;top:0;z-index:50;background:var(--warn);color:var(--warn-text);font-size:13px;text-align:center;padding:8px 16px;border-bottom:1px solid var(--line);}
     header{max-width:720px;margin:0 auto;padding:22px 16px 8px;}
     header h1{font-size:24px;margin:0;}
     header p{margin:4px 0 0;color:var(--muted);font-size:14px;}
@@ -35,12 +35,39 @@
     .a .bullet:last-child{border-bottom:none;}
     .a .disc{color:var(--muted);font-size:12px;margin-top:8px;}
     .a .head{font-weight:700;font-size:16px;margin-bottom:6px;}
-    .loading{align-self:flex-start;color:var(--muted);font-style:italic;padding:10px 4px;}
+    .loading{align-self:flex-start;display:flex;align-items:center;gap:10px;color:var(--muted);padding:10px 4px;}
+    .spinner{width:18px;height:18px;flex:none;border:3px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;}
+    @keyframes spin{to{transform:rotate(360deg);}}
+    /* 피드백 반영: 업로드 버튼 시인성 */
+    .chip.upload{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:700;}
+    @media (max-width:520px){ .chip.upload{flex:1 1 100%;text-align:center;padding:11px 13px;font-size:15px;} .a{font-size:14px;} }
+    /* 차트 미리보기 */
+    .preview{display:none;gap:12px;align-items:flex-start;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:18px;}
+    .preview.on{display:flex;}
+    .preview img{width:120px;max-height:120px;object-fit:contain;border-radius:8px;border:1px solid var(--line);background:#fff;}
+    .preview .side{flex:1;display:flex;flex-direction:column;gap:8px;min-width:0;}
+    .preview .name{font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+    .preview input{font-size:14px;padding:9px 11px;border:1px solid var(--line);border-radius:10px;width:100%;}
+    .preview .btns{display:flex;gap:8px;}
+    .btn{font-size:14px;font-weight:700;padding:8px 16px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--text);cursor:pointer;}
+    .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;}
+    .btn:disabled{opacity:.5;cursor:default;}
+    /* 개인정보 동의 */
+    .consent-bg{display:none;position:fixed;inset:0;z-index:100;background:rgba(20,30,50,.45);align-items:center;justify-content:center;padding:16px;}
+    .consent-bg.on{display:flex;}
+    .consent{background:var(--card);border-radius:16px;padding:22px;max-width:380px;width:100%;box-shadow:0 10px 40px rgba(20,40,80,.2);}
+    .consent h2{font-size:18px;margin:0 0 8px;}
+    .consent p{margin:0 0 6px;font-size:15px;}
+    .consent small{display:block;color:var(--muted);font-size:12px;margin-bottom:16px;}
+    .consent .btns{display:flex;gap:8px;justify-content:flex-end;}
+    .declined{display:none;background:var(--accent-soft);border:1px solid var(--line);border-radius:12px;padding:10px 14px;font-size:14px;margin-bottom:12px;}
+    .declined.on{display:block;}
+    .declined a{color:var(--accent);font-weight:700;cursor:pointer;text-decoration:underline;}
     footer{max-width:720px;margin:0 auto;padding:0 16px 30px;color:var(--muted);font-size:12px;}
   </style>
 </head>
 <body>
-  <div class="notice">⚠️ ChartMate는 AI가 생성한 <b>투자 참고용</b> 정보를 제공하며, 투자자문·매매 권유가 아닙니다.</div>
+  <div class="notice" role="note">⚠️ 본 서비스의 정보는 AI가 생성한 투자 참고용 자료이며, 투자자문·매매 권유가 아닙니다. 투자 판단과 책임은 이용자 본인에게 있습니다.</div>
 
   <header>
     <h1>📊 ChartMate</h1>
@@ -48,6 +75,7 @@
   </header>
 
   <div class="wrap">
+    <div class="declined" id="declined">저장에 동의하지 않아 대화 기능이 꺼져 있어요. 차트 이미지 분석은 이용할 수 있습니다. <a onclick="openConsent()">다시 선택</a></div>
     <div class="ask">
       <input id="q" type="text" placeholder="예: 엔비디아 지금 어때?  /  NVDA  /  비트코인" onkeydown="if(event.key==='Enter')send()" />
       <button id="send" onclick="send()">분석</button>
@@ -57,10 +85,34 @@
       <span class="chip" onclick="quick('애플 지금 어때?')">애플</span>
       <span class="chip" onclick="quick('테슬라 지금 어때?')">테슬라</span>
       <span class="chip" onclick="quick('비트코인 지금 어때?')">비트코인</span>
-      <label class="chip" style="cursor:pointer">📷 차트 업로드 (또는 Ctrl+V)<input type="file" id="chartfile" accept="image/*" style="display:none" onchange="uploadChart(this.files[0])" /></label>
+      <label class="chip upload">📷 차트 업로드 (또는 Ctrl+V)<input type="file" id="chartfile" accept="image/*" style="display:none" onchange="pickChart(this.files[0])" /></label>
+    </div>
+
+    <div class="preview" id="preview">
+      <img id="previewImg" alt="업로드할 차트 미리보기" />
+      <div class="side">
+        <div class="name" id="previewName"></div>
+        <input id="previewNote" type="text" placeholder="메모 (선택) 예: 삼성전자 일봉" onkeydown="if(event.key==='Enter')sendChart()" />
+        <div class="btns">
+          <button class="btn primary" id="previewSend" onclick="sendChart()">전송</button>
+          <button class="btn" onclick="cancelChart()">취소</button>
+        </div>
+      </div>
     </div>
 
     <div id="feed"></div>
+  </div>
+
+  <div class="consent-bg" id="consentBg" role="dialog" aria-modal="true" aria-labelledby="consentTitle">
+    <div class="consent">
+      <h2 id="consentTitle">개인정보 수집 동의</h2>
+      <p>대화 내용과 관심종목이 저장됩니다. 동의하시겠습니까?</p>
+      <small>민감정보는 수집하지 않습니다. 동의하지 않으면 대화 기능은 사용할 수 없습니다.</small>
+      <div class="btns">
+        <button class="btn" onclick="setConsent(false)">동의 안 함</button>
+        <button class="btn primary" onclick="setConsent(true)">동의</button>
+      </div>
+    </div>
   </div>
 
   <footer>ChartMate · 생성형 AI(OpenAI) + 시세·지표 분석(yfinance) 기반 · 투자 판단과 책임은 이용자 본인에게 있습니다.</footer>
@@ -77,7 +129,28 @@
     const sendBtn = document.getElementById("send");
     let history = [];
 
-    function quick(text){ input.value = text; send(); }
+    // ── 개인정보 동의 (첫 방문 시 1회) ──
+    const CONSENT_KEY = "chartmate_consent"; // "yes" | "no"
+    let consent = null;
+    try { consent = localStorage.getItem(CONSENT_KEY); } catch(e) {}
+
+    function openConsent(){ document.getElementById("consentBg").classList.add("on"); }
+    function setConsent(ok){
+      consent = ok ? "yes" : "no";
+      try { localStorage.setItem(CONSENT_KEY, consent); } catch(e) {}
+      document.getElementById("consentBg").classList.remove("on");
+      applyConsent();
+    }
+    function applyConsent(){
+      const off = consent !== "yes";
+      input.disabled = off;
+      sendBtn.disabled = off;
+      document.getElementById("declined").classList.toggle("on", consent === "no");
+    }
+    applyConsent();
+    if (consent === null) openConsent();
+
+    function quick(text){ if (consent !== "yes") { openConsent(); return; } input.value = text; send(); }
 
     function addUser(text){
       const el = document.createElement("div");
@@ -90,7 +163,7 @@
     function addLoading(){
       const el = document.createElement("div");
       el.className = "loading";
-      el.textContent = "분석 중… (무료 서버라 처음엔 30초~1분 걸릴 수 있어요)";
+      el.innerHTML = '<span class="spinner" aria-hidden="true"></span><span>분석 중… (무료 서버라 처음엔 30초~1분 걸릴 수 있어요)</span>';
       el.id = "loading";
       feed.appendChild(el);
       scroll();
@@ -131,6 +204,7 @@
     function scroll(){ window.scrollTo(0, document.body.scrollHeight); }
 
     async function send(){
+      if (consent !== "yes") { openConsent(); return; } // 대화는 서버에 저장되므로 동의 필요
       const msg = input.value.trim();
       if (!msg) return;
       input.value = "";
@@ -194,7 +268,37 @@
       });
     }
 
-    async function uploadChart(file){
+    // ── 차트 이미지: 선택 → 미리보기 → 전송 ──
+    let pendingChart = null;
+    function pickChart(file){
+      if(!file) return;
+      if(!file.type || !file.type.startsWith("image/")){
+        addAssistant("⚠️ 이미지 파일만 업로드할 수 있어요.");
+        return;
+      }
+      pendingChart = file;
+      const img = document.getElementById("previewImg");
+      if (img.src) URL.revokeObjectURL(img.src);
+      img.src = URL.createObjectURL(file);
+      document.getElementById("previewName").textContent = file.name || "붙여넣은 이미지";
+      document.getElementById("preview").classList.add("on");
+      document.getElementById("previewNote").focus();
+    }
+    function cancelChart(){
+      pendingChart = null;
+      document.getElementById("preview").classList.remove("on");
+      document.getElementById("previewNote").value = "";
+      const f = document.getElementById("chartfile"); if(f) f.value = "";
+    }
+    async function sendChart(){
+      if(!pendingChart) return;
+      const file = pendingChart;
+      const note = document.getElementById("previewNote").value.trim();
+      cancelChart();
+      await uploadChart(file, note);
+    }
+
+    async function uploadChart(file, note = ""){
       if(!file) return;
       addUserImage(file);
       addLoading();
@@ -202,6 +306,7 @@
         const blob = await resizeImage(file);
         const fd = new FormData();
         fd.append("image", blob, "chart.jpg");
+        if (note) fd.append("note", note);
         const res = await fetch(`${API_BASE_URL}/api/chart`, { method:"POST", body: fd });
         const data = await res.json();
         removeLoading();
@@ -220,13 +325,13 @@
       }
     }
 
-    // Win+Shift+S로 캡처한 이미지를 Ctrl+V로 바로 분석
+    // Win+Shift+S로 캡처한 이미지를 Ctrl+V로 붙여넣으면 미리보기에 올라감
     document.addEventListener("paste", (e) => {
       const items = (e.clipboardData && e.clipboardData.items) || [];
       for (const it of items) {
         if (it.type && it.type.startsWith("image/")) {
           const file = it.getAsFile();
-          if (file) { e.preventDefault(); uploadChart(file); return; }
+          if (file) { e.preventDefault(); pickChart(file); return; }
         }
       }
     });
